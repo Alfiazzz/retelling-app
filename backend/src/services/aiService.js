@@ -1,107 +1,71 @@
-import Groq           from 'groq-sdk'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const MODEL = 'meta-llama/llama-3.1-8b-instruct:free'
 
-const provider = process.env.AI_PROVIDER ?? 'groq'
+const AI_AVAILABLE = !!process.env.OPENROUTER_API_KEY
 
-// ─── Инициализация клиентов ──────────────────────────────────────────────────
-let groqClient, geminiModel
-
-if (provider === 'groq' && process.env.GROQ_API_KEY) {
-  groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY })
+function mockAnalyzeRetelling(originalText, retelling) {
+  const origWords   = originalText.trim().split(/\s+/).length
+  const retellWords = retelling.trim().split(/\s+/).length
+  const score       = Math.min(100, Math.round((retellWords / (origWords * 0.4)) * 100))
+  const verdict     = score >= 80 ? 'good' : score >= 50 ? 'partial' : 'poor'
+  return {
+    score,
+    verdict,
+    keyPoints: ['AI-анализ не настроен — используется простая оценка по объёму'],
+    missed: verdict !== 'good' ? ['Добавь OPENROUTER_API_KEY для детального анализа'] : [],
+  }
 }
-if ((provider === 'gemini' || !groqClient) && process.env.GEMINI_API_KEY) {
-  const genAI  = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-  geminiModel  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+
+function mockCheckAnswer(userAnswer) {
+  const hasAnswer = userAnswer.trim().length > 3
+  return {
+    result: hasAnswer ? 'correct' : 'wrong',
+    explanation: hasAnswer ? 'Ответ принят. Для точной проверки добавь AI-ключ.' : 'Ответ слишком короткий.',
+    correctAnswer: '',
+  }
 }
 
-// ─── Универсальный вызов AI ──────────────────────────────────────────────────
 async function askAI(systemPrompt, userPrompt) {
-  if (groqClient && provider === 'groq') {
-    const res = await groqClient.chat.completions.create({
-      model:    'llama-3.3-70b-versatile',
+  const res = await fetch(OPENROUTER_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': process.env.FRONTEND_URL ?? 'http://localhost:5173',
+      'X-Title': 'Retelling App',
+    },
+    body: JSON.stringify({
+      model: MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userPrompt   },
+        { role: 'user',   content: userPrompt },
       ],
       temperature: 0.3,
-      max_tokens:  1024,
-    })
-    return res.choices[0].message.content
+      max_tokens: 1024,
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(`OpenRouter error: ${res.status} — ${err?.error?.message ?? 'unknown'}`)
   }
-
-  if (geminiModel) {
-    const res = await geminiModel.generateContent(
-      `${systemPrompt}\n\n${userPrompt}`
-    )
-    return res.response.text()
-  }
-
-  throw new Error('AI провайдер не настроен. Добавь GROQ_API_KEY или GEMINI_API_KEY в .env')
+  const data = await res.json()
+  return data.choices[0].message.content
 }
 
-// ─── Анализ пересказа ────────────────────────────────────────────────────────
 export async function analyzeRetelling(originalText, retelling) {
-  const system = `Ты — педагогический ассистент. Анализируешь пересказ ребёнка школьного возраста.
-Отвечай ТОЛЬКО валидным JSON без markdown-блоков и пояснений.`
-
-  const user = `Исходный текст:
-"""
-${originalText.slice(0, 3000)}
-"""
-
-Пересказ ребёнка:
-"""
-${retelling.slice(0, 2000)}
-"""
-
-Задача:
-1. Выдели 5–8 ключевых смысловых блоков исходного текста.
-2. Проверь, какие из них упомянуты в пересказе (учитывай синонимы и перефразировки, не требуй дословного совпадения).
-3. Вычисли процент полноты (охваченные блоки / всего блоков * 100).
-4. Определи вердикт: "good" (80%+), "partial" (50–79%), "poor" (меньше 50%).
-5. Перечисли пропущенные смысловые блоки простым детским языком (1–2 предложения каждый).
-
-Верни JSON:
-{
-  "score": <число 0-100>,
-  "verdict": "good"|"partial"|"poor",
-  "keyPoints": ["..."],
-  "missed": ["..."]
-}`
-
-  const raw  = await askAI(system, user)
-  const json = raw.replace(/```json|```/g, '').trim()
+  if (!AI_AVAILABLE) return mockAnalyzeRetelling(originalText, retelling)
+  const system = `Ты — педагогический ассистент. Анализируешь пересказ ребёнка школьного возраста. Отвечай ТОЛЬКО валидным JSON без markdown-блоков и пояснений.`
+  const user = `Исходный текст:\n"""\n${originalText.slice(0, 3000)}\n"""\n\nПересказ ребёнка:\n"""\n${retelling.slice(0, 2000)}\n"""\n\nВерни JSON:\n{\n  "score": <число 0-100>,\n  "verdict": "good"|"partial"|"poor",\n  "keyPoints": ["..."],\n  "missed": ["..."]\n}`
+  const raw = await askAI(system, user)
+  const json = raw.replace(/\`\`\`json|\`\`\`/g, '').trim()
   return JSON.parse(json)
 }
 
-// ─── Проверка ответа на вопрос ───────────────────────────────────────────────
 export async function checkAnswer(question, userAnswer, originalText) {
-  const system = `Ты — педагогический ассистент. Проверяешь ответы ребёнка на вопросы по тексту.
-Будь добрым и поддерживающим. Отвечай ТОЛЬКО валидным JSON без markdown-блоков.`
-
-  const user = `Текст произведения (фрагмент для контекста):
-"""
-${originalText.slice(0, 2000)}
-"""
-
-Вопрос: ${question}
-Ответ ребёнка: ${userAnswer}
-
-Оцени ответ:
-- "correct" — ответ верный или близкий по смыслу
-- "partial" — ответ частично верный, есть важное уточнение
-- "wrong"   — ответ неверный
-
-Для вопроса об основной мысли принимай широкий диапазон ответов если суть верна.
-
-Верни JSON:
-{
-  "result": "correct"|"partial"|"wrong",
-  "explanation": "<краткое пояснение для ребёнка, 1 предложение, дружелюбно>",
-  "correctAnswer": "<правильный ответ, если result != correct>"
-}`
-
-  const raw  = await askAI(system, user)
-  const json = raw.replace(/```json|```/g, '').trim()
+  if (!AI_AVAILABLE) return mockCheckAnswer(userAnswer)
+  const system = `Ты — педагогический ассистент. Проверяешь ответы ребёнка на вопросы по тексту. Будь добрым. Отвечай ТОЛЬКО валидным JSON без markdown-блоков.`
+  const user = `Текст:\n"""\n${originalText.slice(0, 2000)}\n"""\n\nВопрос: ${question}\nОтвет ребёнка: ${userAnswer}\n\nВерни JSON:\n{\n  "result": "correct"|"partial"|"wrong",\n  "explanation": "<пояснение>",\n  "correctAnswer": "<правильный ответ если wrong>"\n}`
+  const raw = await askAI(system, user)
+  const json = raw.replace(/\`\`\`json|\`\`\`/g, '').trim()
   return JSON.parse(json)
 }
