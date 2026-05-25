@@ -1,5 +1,5 @@
 const HF_API_URL = 'https://router.huggingface.co/v1/chat/completions'
-const MODEL = 'HuggingFaceH4/zephyr-7b-beta:hf-inference'
+const MODEL = 'HuggingFaceTB/SmolLM3-3B:hf-inference'
  
 const AI_AVAILABLE = !!process.env.HF_TOKEN
  
