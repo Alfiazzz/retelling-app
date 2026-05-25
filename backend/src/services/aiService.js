@@ -1,5 +1,5 @@
-const HF_API_URL = 'https://router.huggingface.co/hf-inference/v1/chat/completions'
-const MODEL = 'meta-llama/Llama-3.2-3B-Instruct'
+const HF_API_URL = 'https://router.huggingface.co/v1/chat/completions'
+const MODEL = 'meta-llama/Llama-3.1-8B-Instruct:hf-inference'
 
 const AI_AVAILABLE = !!process.env.HF_TOKEN
 
