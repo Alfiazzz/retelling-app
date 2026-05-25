@@ -1,5 +1,5 @@
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
-const MODEL = 'openrouter/auto'
+const MODEL = 'openrouter/free'
 
 const AI_AVAILABLE = !!process.env.OPENROUTER_API_KEY
 
