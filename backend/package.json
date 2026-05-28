@@ -12,5 +12,6 @@
     "dotenv": "^16.4.0",
     "resend": "^3.4.0",
     "express-rate-limit": "^7.4.0"
+    "undici": "^6.0.0"
   }
 }
