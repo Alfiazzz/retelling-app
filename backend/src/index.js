@@ -19,6 +19,7 @@ const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
   message: { message: 'Слишком много запросов. Подожди немного.' },
+  validate: { xForwardedForHeader: false },
 })
 app.use('/api', limiter)
 
