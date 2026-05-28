@@ -17,6 +17,9 @@ function mockCheckAnswer(userAnswer) {
 
 // Получаем токен доступа через Authorization Key
 async function getAccessToken() {
+  const { Agent } = await import('node:https')
+  const agent = new Agent({ rejectUnauthorized: false })
+
   const res = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
     method: 'POST',
     headers: {
@@ -25,6 +28,7 @@ async function getAccessToken() {
       'RqUID': crypto.randomUUID(),
     },
     body: 'scope=GIGACHAT_API_PERS',
+    dispatcher: new (await import('undici')).Agent({ connect: { rejectUnauthorized: false } }),
   })
   if (!res.ok) {
     const err = await res.text()
@@ -35,26 +39,40 @@ async function getAccessToken() {
 }
 
 async function askAI(systemPrompt, userPrompt) {
-  console.log('Получаю токен GigaChat...')
-  const token = await getAccessToken()
-  console.log('Отправляю запрос к GigaChat...')
+    console.log('Получаю токен GigaChat...')
+    const token = await getAccessToken()
+    console.log('Отправляю запрос к GigaChat...')
 
   const res = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'GigaChat-2',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.3,
-      max_tokens: 1024,
-    }),
-  })
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'GigaChat-2',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 1024,
+      }),
+      dispatcher: new (await import('undici')).Agent({ connect: { rejectUnauthorized: false } }),
+    })
+
+  if (!res.ok) {
+      const err = await res.text()
+      console.log(`GigaChat ошибка: ${res.status} — ${err}`)
+      throw new Error(`GigaChat error: ${res.status}`)
+    }
+
+  const data = await res.json()
+    const text = data.choices?.[0]?.message?.content
+    if (!text) throw new Error('Пустой ответ от GigaChat')
+    console.log('GigaChat ответил успешно')
+    return text
+  }
 
   if (!res.ok) {
     const err = await res.text()
