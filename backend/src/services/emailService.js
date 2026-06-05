@@ -12,6 +12,8 @@ function createTransport() {
     },
     connectionTimeout: 15000,
     greetingTimeout: 15000,
+    logger: true,
+    debug: true,
   })
 }
 
