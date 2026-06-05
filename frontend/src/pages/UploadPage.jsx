@@ -84,7 +84,7 @@ export default function UploadPage() {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*,application/pdf"
+            accept="image/jpeg,image/png"
             multiple
             className="hidden"
             onChange={e => handleFiles(e.target.files)}
@@ -93,7 +93,7 @@ export default function UploadPage() {
             <>
               <div className="text-5xl mb-3">📷</div>
               <p className="font-semibold text-gray-700">Нажми или перетащи фото</p>
-              <p className="text-sm text-gray-400 mt-1">JPG, PNG, PDF · можно несколько страниц</p>
+              <p className="text-sm text-gray-400 mt-1">JPG, PNG · можно несколько страниц</p>
             </>
           ) : (
             <>
