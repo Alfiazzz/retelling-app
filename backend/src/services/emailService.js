@@ -4,12 +4,14 @@ import nodemailer from 'nodemailer'
 function createTransport() {
   return nodemailer.createTransport({
     host: 'mail.pereskazka-ai.ru',
-    port: 465,
-    secure: true,  // SSL/TLS
+    port: 25,
+    secure: false,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
   })
 }
 
