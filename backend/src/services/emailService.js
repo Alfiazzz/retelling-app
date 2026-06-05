@@ -1,22 +1,6 @@
-import nodemailer from 'nodemailer'
+// Email через RuSender API (HTTP — работает с Render)
 
-// SMTP через хостинг pereskazka-ai.ru
-function createTransport() {
-  return nodemailer.createTransport({
-    host: 'mail.pereskazka-ai.ru',
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    logger: true,
-    debug: true,
-  })
-}
+const RUSENDER_API_URL = 'https://api.rusender.ru/api/v1/external-mails/send'
 
 const VERDICT_LABELS = {
   good:    '✅ Отлично',
@@ -89,19 +73,41 @@ function buildHtml(data) {
 }
 
 export async function sendReport(data) {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.log('SMTP не настроен — письмо не отправлено')
+  if (!process.env.RUSENDER_API_KEY) {
+    console.log('RUSENDER_API_KEY не настроен — письмо не отправлено')
     return
   }
-  const transporter = createTransport()
+
   const { email, childName, title } = data
   const subject = `Отчёт о пересказе${title && title !== '—' ? ` — «${title}»` : ''}${childName ? ` (${childName})` : ''}`
 
-  await transporter.sendMail({
-    from: `"Пересказка.ai" <${process.env.SMTP_USER}>`,
-    to:   email,
-    subject,
-    html: buildHtml(data),
+  console.log(`Отправляю письмо через RuSender на ${email}...`)
+
+  const res = await fetch(RUSENDER_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Api-Key': process.env.RUSENDER_API_KEY,
+    },
+    body: JSON.stringify({
+      mail: {
+        to: { email },
+        from: {
+          email: `noreply@pereskazka-ai.ru`,
+          name: 'Пересказка.ai',
+        },
+        subject,
+        html: buildHtml(data),
+      }
+    }),
   })
-  console.log(`Письмо отправлено на ${email}`)
+
+  const result = await res.json().catch(() => ({}))
+  console.log(`RuSender ответ: ${res.status}`, JSON.stringify(result))
+
+  if (!res.ok) {
+    throw new Error(`RuSender error: ${res.status} — ${JSON.stringify(result)}`)
+  }
+
+  console.log(`✅ Письмо отправлено на ${email}`)
 }
