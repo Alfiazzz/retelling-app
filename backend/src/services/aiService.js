@@ -84,5 +84,8 @@ export async function checkAnswer(question, userAnswer, originalText) {
   const system = `Ты педагогический ассистент. Проверяешь ответы ребёнка. Отвечай ТОЛЬКО валидным JSON без markdown.`
   const user = `Текст:\n"""\n${originalText.slice(0, 2000)}\n"""\nВопрос: ${question}\nОтвет: ${userAnswer}\nВерни JSON:\n{"result": "correct"|"partial"|"wrong", "explanation": "...", "correctAnswer": "..."}`
   const raw = await askAI(system, user)
-  return JSON.parse(raw.replace(/```json|```/g, '').trim())
+const cleaned = raw.replace(/```json|```/g, '').trim()
+const match = cleaned.match(/\{[\s\S]*\}/)
+if (!match) throw new Error('GigaChat не вернул JSON: ' + cleaned.slice(0, 100))
+return JSON.parse(match[0])
 }
