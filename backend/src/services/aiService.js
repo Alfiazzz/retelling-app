@@ -73,7 +73,10 @@ export async function analyzeRetelling(originalText, retelling) {
   const system = `Ты педагогический ассистент. Анализируешь пересказ ребёнка. Отвечай ТОЛЬКО валидным JSON без markdown.`
   const user = `Текст:\n"""\n${originalText.slice(0, 3000)}\n"""\nПересказ:\n"""\n${retelling.slice(0, 2000)}\n"""\nВерни JSON:\n{"score": <0-100>, "verdict": "good"|"partial"|"poor", "keyPoints": ["..."], "missed": ["..."]}`
   const raw = await askAI(system, user)
-  return JSON.parse(raw.replace(/```json|```/g, '').trim())
+  const cleaned = raw.replace(/```json|```/g, '').trim()
+  const match = cleaned.match(/\{[\s\S]*\}/)
+  if (!match) throw new Error('GigaChat не вернул JSON: ' + cleaned.slice(0, 100))
+  return JSON.parse(match[0])
 }
 
 export async function checkAnswer(question, userAnswer, originalText) {
