@@ -70,7 +70,7 @@ async function askAI(systemPrompt, userPrompt) {
 
 export async function analyzeRetelling(originalText, retelling) {
   if (!AI_AVAILABLE) return mockAnalyzeRetelling(originalText, retelling)
-  const system = `Ты педагогический ассистент. Анализируешь пересказ ребёнка. Отвечай ТОЛЬКО валидным JSON без markdown.`
+  const system = `Ты педагогический ассистент. Анализируешь пересказ ребёнка дошкольного и школьного возраста. Отвечай ТОЛЬКО валидным JSON без markdown и пояснений. Учитывай что речь распознается автоматически и могут быть небольшие неточности в словах. Оценивай смысловую близость, а не дословное совпадение. Если пересказ передает все основные смысловые блоки - ставь 100%`
   const user = `Текст:\n"""\n${originalText.slice(0, 3000)}\n"""\nПересказ:\n"""\n${retelling.slice(0, 2000)}\n"""\nВерни JSON:\n{"score": <0-100>, "verdict": "good"|"partial"|"poor", "keyPoints": ["..."], "missed": ["..."]}`
   const raw = await askAI(system, user)
   const cleaned = raw.replace(/```json|```/g, '').trim()
@@ -81,7 +81,7 @@ export async function analyzeRetelling(originalText, retelling) {
 
 export async function checkAnswer(question, userAnswer, originalText) {
   if (!AI_AVAILABLE) return mockCheckAnswer(userAnswer)
-  const system = `Ты педагогический ассистент. Проверяешь ответы ребёнка. Отвечай ТОЛЬКО валидным JSON без markdown.`
+  const system = `Ты педагогический ассистент. Анализируешь пересказ ребёнка дошкольного и школьного возраста. Отвечай ТОЛЬКО валидным JSON без markdown и пояснений. Учитывай что речь распознается автоматически и могут быть небольшие неточности в словах. Оценивай смысловую близость, а не дословное совпадение. Если пересказ передает все основные смысловые блоки - ставь 100%`
   const user = `Текст:\n"""\n${originalText.slice(0, 2000)}\n"""\nВопрос: ${question}\nОтвет: ${userAnswer}\nВерни JSON:\n{"result": "correct"|"partial"|"wrong", "explanation": "...", "correctAnswer": "..."}`
   const raw = await askAI(system, user)
 const cleaned = raw.replace(/```json|```/g, '').trim()
