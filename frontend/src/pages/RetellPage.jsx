@@ -2,36 +2,32 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { createSpeechRecognizer, isSpeechRecognitionSupported, speak } from '../services/speechService.js'
 import { analyzeRetelling } from '../services/aiService.js'
-import WaveIndicator from '../components/WaveIndicator.jsx'
 
-const SILENCE_TIMEOUT_MS = 30_000
+const SILENCE_MS = 30_000
 
 export default function RetellPage() {
-  const navigate  = useNavigate()
-  const location  = useLocation()
-  const state     = location.state
+  const navigate = useNavigate()
+  const location = useLocation()
+  const state    = location.state
 
-  // Если попали сюда без текста — вернуть на главную
   useEffect(() => { if (!state?.text) navigate('/') }, [])
   if (!state?.text) return null
 
   const { text, wordCount, length, meta } = state
+  const maxSecs = length.maxRecordMin * 60
 
-  const [phase,       setPhase]       = useState('intro')   // intro | recording | paused | analyzing | done
-  const [transcript,  setTranscript]  = useState('')
-  const [interim,     setInterim]     = useState('')
-  const [elapsed,     setElapsed]     = useState(0)         // секунды
-  const [error,       setError]       = useState('')
-  const [analysis,    setAnalysis]    = useState(null)
-  const [showText,    setShowText]    = useState(false)
+  const [phase,      setPhase]      = useState('intro')
+  const [transcript, setTranscript] = useState('')
+  const [interim,    setInterim]    = useState('')
+  const [elapsed,    setElapsed]    = useState(0)
+  const [error,      setError]      = useState('')
+  const [analysis,   setAnalysis]   = useState(null)
+  const [showText,   setShowText]   = useState(false)
 
-  const recognizerRef  = useRef(null)
-  const timerRef       = useRef(null)
-  const silenceRef     = useRef(null)
-  const lastSpeechRef  = useRef(Date.now())
-  const maxSecs        = length.maxRecordMin * 60
+  const recRef     = useRef(null)
+  const timerRef   = useRef(null)
+  const silenceRef = useRef(null)
 
-  // Таймер записи
   useEffect(() => {
     if (phase === 'recording') {
       timerRef.current = setInterval(() => {
@@ -46,10 +42,8 @@ export default function RetellPage() {
     return () => clearInterval(timerRef.current)
   }, [phase])
 
-  function formatTime(s) {
-    const m = Math.floor(s / 60)
-    const sec = s % 60
-    return `${m}:${sec.toString().padStart(2, '0')}`
+  function fmt(s) {
+    return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`
   }
 
   function startRecording() {
@@ -57,215 +51,191 @@ export default function RetellPage() {
       setError('Браузер не поддерживает распознавание речи. Используй Chrome или Edge.')
       return
     }
-    setError('')
-    setTranscript('')
-    setInterim('')
-    setElapsed(0)
-
+    setError(''); setTranscript(''); setInterim(''); setElapsed(0)
     const rec = createSpeechRecognizer({
       onResult: ({ final, interim: int }) => {
-        setTranscript(final)
-        setInterim(int)
-        lastSpeechRef.current = Date.now()
+        setTranscript(final); setInterim(int)
         clearTimeout(silenceRef.current)
-        silenceRef.current = setTimeout(() => {
-          speak('Ты ещё здесь? Продолжай пересказ или нажми завершить.')
-        }, SILENCE_TIMEOUT_MS)
+        silenceRef.current = setTimeout(() => speak('Ты ещё здесь? Продолжай пересказ.'), SILENCE_MS)
       },
-      onEnd: (final) => {
-        setTranscript(final)
-        setInterim('')
-        clearTimeout(silenceRef.current)
-      },
+      onEnd: (final) => { setTranscript(final); setInterim(''); clearTimeout(silenceRef.current) },
       onError: (msg) => setError(msg),
     })
-
     if (!rec) return
-    recognizerRef.current = rec
+    recRef.current = rec
     rec.start()
     setPhase('recording')
   }
 
   function pauseRecording() {
-    recognizerRef.current?.stop()
-    clearTimeout(silenceRef.current)
-    setPhase('paused')
+    recRef.current?.stop(); clearTimeout(silenceRef.current); setPhase('paused')
   }
-
   function resumeRecording() {
-    recognizerRef.current?.start()
-    setPhase('recording')
+    recRef.current?.start(); setPhase('recording')
   }
-
   function stopRecording() {
-    recognizerRef.current?.stop()
-    clearTimeout(silenceRef.current)
-    setPhase('analyzing')
+    recRef.current?.stop(); clearTimeout(silenceRef.current); setPhase('analyzing')
   }
-
   function resetRecording() {
-    recognizerRef.current?.abort()
-    clearTimeout(silenceRef.current)
-    clearInterval(timerRef.current)
-    setTranscript('')
-    setInterim('')
-    setElapsed(0)
-    setPhase('intro')
+    recRef.current?.abort(); clearTimeout(silenceRef.current); clearInterval(timerRef.current)
+    setTranscript(''); setInterim(''); setElapsed(0); setPhase('intro')
   }
 
-  // Запускаем анализ когда перешли в фазу 'analyzing'
   useEffect(() => {
     if (phase !== 'analyzing') return
     const t = transcript.trim()
     if (!t || t.split(/\s+/).length < 5) {
       setError('Пересказ слишком короткий. Попробуй ещё раз.')
-      setPhase('intro')
-      return
+      setPhase('intro'); return
     }
     analyzeRetelling(text, t)
-      .then(result => {
-        setAnalysis(result)
-        setPhase('done')
-      })
-      .catch(e => {
-        setError('Ошибка анализа: ' + e.message)
-        setPhase('intro')
-      })
+      .then(r => { setAnalysis(r); setPhase('done') })
+      .catch(e => { setError('Ошибка анализа: ' + e.message); setPhase('intro') })
   }, [phase])
 
-  function handleContinue() {
-    navigate('/result', {
-      state: { text, meta, transcript, analysis }
-    })
-  }
-
-  const timeLeft = maxSecs - elapsed
-  const isRecording = phase === 'recording'
-  const isPaused    = phase === 'paused'
+  const timeLeft  = maxSecs - elapsed
+  const isRec     = phase === 'recording'
+  const isPaused  = phase === 'paused'
 
   return (
-    <div className="space-y-5">
-      <div className="text-center pt-2">
-        <h1 className="text-2xl font-extrabold text-gray-800">🎤 Перескажи текст</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          Текст: {wordCount} слов · {length.label} · максимум {length.maxRecordMin} мин
-        </p>
+    <div className="page-content">
+
+      {/* Hero */}
+      <div className="hero-block">
+        <div className="hero-emoji-wrap record">🎤</div>
+        <h1>Перескажи текст</h1>
+        <p>{wordCount} слов · {length.label} · максимум {length.maxRecordMin} мин</p>
       </div>
 
-      {/* Показать/скрыть исходный текст */}
-      <div className="card">
-        <button
-          className="w-full flex items-center justify-between text-sm font-semibold text-primary-600"
-          onClick={() => setShowText(v => !v)}
-        >
+      {/* Показать текст */}
+      <div className="card" style={{ padding: '12px 16px' }}>
+        <button className="toggle-text-btn" onClick={() => setShowText(v => !v)}>
           <span>📄 Исходный текст</span>
-          <span>{showText ? '▲ скрыть' : '▼ показать'}</span>
+          <span style={{ color: 'var(--muted)', fontSize: 12 }}>{showText ? '▲ скрыть' : '▼ показать'}</span>
         </button>
         {showText && (
-          <div className="mt-3 text-sm text-gray-700 leading-relaxed max-h-48 overflow-y-auto border-t border-sky-100 pt-3 whitespace-pre-wrap">
+          <div style={{
+            marginTop: 10, paddingTop: 10,
+            borderTop: '1.5px solid var(--border)',
+            fontSize: 13, lineHeight: 1.7,
+            color: 'var(--text)',
+            maxHeight: 160, overflowY: 'auto',
+            whiteSpace: 'pre-wrap',
+          }}>
             {text}
           </div>
         )}
       </div>
 
-      {/* Основной блок записи */}
-      <div className="card text-center space-y-4">
+      {/* Блок записи */}
+      <div className="card" style={{ textAlign: 'center', padding: '20px 16px' }}>
 
         {phase === 'intro' && (
           <>
-            <div className="text-4xl">🎙️</div>
-            <p className="text-gray-600 text-sm leading-relaxed">
-              Прочитай текст, потом нажми кнопку и расскажи его своими словами.
-              Говори чётко и не торопись.
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.6 }}>
+              Прочитай текст, потом нажми кнопку<br/>и расскажи своими словами
             </p>
-            <button className="btn-primary w-full text-base py-4" onClick={startRecording}>
-              Начать пересказ
-            </button>
+            <div className="rec-button-wrap">
+              <button className="rec-btn" onClick={startRecording}>🎙️</button>
+              <span className="rec-hint">Нажми чтобы начать</span>
+            </div>
           </>
         )}
 
-        {(isRecording || isPaused) && (
+        {(isRec || isPaused) && (
           <>
-            {/* Таймер */}
-            <div className="flex items-center justify-between text-sm">
-              <span className={`font-mono font-bold text-lg ${timeLeft < 30 ? 'text-orange-500' : 'text-primary-600'}`}>
-                {formatTime(elapsed)}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span className="timer-display">{fmt(elapsed)}</span>
+              <span style={{
+                fontSize: 12, fontWeight: 700,
+                color: timeLeft < 30 ? 'var(--coral)' : 'var(--muted)'
+              }}>
+                осталось {fmt(timeLeft)}
               </span>
-              <span className="text-gray-400">осталось {formatTime(timeLeft)}</span>
             </div>
 
-            <WaveIndicator active={isRecording} />
-
-            {isPaused && (
-              <div className="text-orange-400 text-sm font-medium">⏸ Пауза</div>
+            {isRec ? (
+              <div className="wave-display" style={{ marginBottom: 12 }}>
+                {[1,2,3,4,5,6,7].map(i => <div key={i} className="wave-bar" />)}
+              </div>
+            ) : (
+              <div style={{ height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: 13, color: 'var(--orange)', fontWeight: 700 }}>⏸ Пауза</span>
+              </div>
             )}
 
-            {/* Субтитры */}
-            <div className="bg-sky-50 rounded-2xl px-4 py-3 text-left min-h-[60px]">
-              <p className="text-sm text-gray-700 leading-relaxed">
-                {transcript}
-                {interim && <span className="text-gray-400"> {interim}</span>}
-                {!transcript && !interim && (
-                  <span className="text-gray-400 italic">Говори — здесь появится твоя речь...</span>
-                )}
-              </p>
+            <div className="subtitle-box" style={{ marginBottom: 14, textAlign: 'left' }}>
+              {transcript || interim ? (
+                <>
+                  {transcript}
+                  {interim && <span className="subtitle-interim"> {interim}</span>}
+                </>
+              ) : (
+                <span className="subtitle-interim" style={{ fontStyle: 'italic' }}>
+                  Говори — здесь появится твоя речь...
+                </span>
+              )}
             </div>
 
-            <div className="flex gap-3">
-              <button className="btn-secondary flex-1 text-sm py-2"
+            <div className="btn-row" style={{ marginBottom: 10 }}>
+              <button className="btn btn-secondary btn-sm"
                 onClick={isPaused ? resumeRecording : pauseRecording}>
                 {isPaused ? '▶ Продолжить' : '⏸ Пауза'}
               </button>
-              <button className="btn-danger flex-1 text-sm py-2" onClick={stopRecording}>
+              <button className="btn btn-primary btn-sm" onClick={stopRecording}>
                 ⏹ Завершить
               </button>
             </div>
-            <button className="text-xs text-gray-400 hover:text-gray-600 underline" onClick={resetRecording}>
+            <button onClick={resetRecording}
+              style={{ fontSize: 12, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
               Записать заново
             </button>
           </>
         )}
 
         {phase === 'analyzing' && (
-          <>
-            <div className="text-4xl animate-spin">⚙️</div>
-            <p className="text-gray-600 font-medium">Анализирую пересказ...</p>
-            <p className="text-gray-400 text-sm">Обычно это занимает 5–10 секунд</p>
-          </>
+          <div className="analyzing-box">
+            <span className="analyzing-spinner">⚙️</span>
+            <p className="analyzing-title">Анализирую пересказ...</p>
+            <p className="analyzing-hint">Обычно 5–10 секунд</p>
+          </div>
         )}
 
         {phase === 'done' && analysis && (
           <>
-            <div className="text-4xl">
-              {analysis.verdict === 'good' ? '🌟' : analysis.verdict === 'partial' ? '⚠️' : '🔁'}
+            <div className={`verdict-card ${analysis.verdict}`} style={{ marginBottom: 14, textAlign: 'left' }}>
+              <div className="verdict-icon-box">
+                {analysis.verdict === 'good' ? '🌟' : analysis.verdict === 'partial' ? '⚠️' : '🔁'}
+              </div>
+              <div className="verdict-body">
+                <div className="verdict-title">
+                  {analysis.verdict === 'good' ? 'Отлично!' : analysis.verdict === 'partial' ? 'Есть недочёты' : 'Попробуй ещё раз'}
+                </div>
+                <div className="verdict-score">Полнота пересказа</div>
+              </div>
+              <div className="verdict-pct">{analysis.score}%</div>
             </div>
-            <p className="font-bold text-gray-800 text-lg">
-              {analysis.verdict === 'good'    ? 'Отлично!' :
-               analysis.verdict === 'partial' ? 'Есть недочёты' :
-               'Попробуй ещё раз'}
-            </p>
-            <p className="text-gray-500 text-sm">Полнота пересказа: {analysis.score}%</p>
 
             {analysis.missed?.length > 0 && (
-              <div className="text-left bg-yellow-50 rounded-2xl p-4 border border-yellow-100">
-                <p className="text-sm font-semibold text-gray-700 mb-2">Ты не упомянул(а):</p>
-                <ul className="space-y-1">
-                  {analysis.missed.map((m, i) => (
-                    <li key={i} className="text-sm text-gray-600 flex gap-2">
-                      <span className="text-yellow-500">•</span>{m}
-                    </li>
-                  ))}
-                </ul>
+              <div className="missed-card" style={{ marginBottom: 14, textAlign: 'left' }}>
+                <div className="missed-title">
+                  <span>ℹ️</span> Ты не упомянул(а):
+                </div>
+                {analysis.missed.map((m, i) => (
+                  <div key={i} className="missed-item">
+                    <div className="missed-num">{i+1}</div>
+                    <span>{m}</span>
+                  </div>
+                ))}
               </div>
             )}
 
-            <div className="flex gap-3">
+            <div className="btn-row">
               {analysis.verdict !== 'good' && (
-                <button className="btn-secondary flex-1 text-sm" onClick={resetRecording}>
-                  Попробовать снова
-                </button>
+                <button className="btn btn-secondary btn-sm" onClick={resetRecording}>↩ Снова</button>
               )}
-              <button className="btn-primary flex-1 text-sm" onClick={handleContinue}>
+              <button className="btn btn-blue btn-sm"
+                onClick={() => navigate('/result', { state: { text, meta, transcript, analysis } })}>
                 К вопросам →
               </button>
             </div>
@@ -273,11 +243,8 @@ export default function RetellPage() {
         )}
       </div>
 
-      {/* Ошибка */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700">
-          ⚠️ {error}
-        </div>
+        <div className="error-box"><span>⚠️</span><span>{error}</span></div>
       )}
     </div>
   )
