@@ -4,7 +4,6 @@ import { STANDARD_QUESTIONS, checkAnswer } from '../services/aiService.js'
 import { sendReport, validateEmail } from '../services/emailService.js'
 import { speak } from '../services/speechService.js'
 import { sessionStore } from '../config/sessionStore.js'
-import QuestionCard from '../components/QuestionCard.jsx'
 
 export default function ResultPage() {
   const navigate = useNavigate()
@@ -17,76 +16,62 @@ export default function ResultPage() {
   const { text, meta, transcript, analysis } = state
 
   const [qIndex,    setQIndex]    = useState(0)
-  const [answers,   setAnswers]   = useState([])   // { question, userAnswer, result, explanation, correctAnswer }
-  const [phase,     setPhase]     = useState('questions')  // questions | report | done
+  const [answers,   setAnswers]   = useState([])
+  const [phase,     setPhase]     = useState('questions')
+  const [qAnswer,   setQAnswer]   = useState('')
+  const [qResult,   setQResult]   = useState(null)
+  const [qAttempts, setQAttempts] = useState(0)
+  const [qLoading,  setQLoading]  = useState(false)
   const [email,     setEmail]     = useState('')
+  const [childName, setChildName] = useState('')
   const [emailErr,  setEmailErr]  = useState('')
   const [sending,   setSending]   = useState(false)
   const [sent,      setSent]      = useState(false)
   const [sendErr,   setSendErr]   = useState('')
-  const [childName, setChildName] = useState('')
 
-  const questions = STANDARD_QUESTIONS
+  const questions  = STANDARD_QUESTIONS
+  const MAX_ATT    = 2
+  const correctCnt = answers.filter(a => a.result === 'correct').length
+  const partialCnt = answers.filter(a => a.result === 'partial').length
 
-  async function handleAnswer(question, userAnswer) {
-    const res = await checkAnswer(question.text, userAnswer, text)
-    return res
-  }
-
-  function handleAnswerDone(question, userAnswer, result) {
-    const entry = { question: question.text, userAnswer, ...result }
-    setAnswers(prev => [...prev, entry])
-
-    if (qIndex + 1 < questions.length) {
-      setTimeout(() => setQIndex(i => i + 1), 800)
-    } else {
-      // Все вопросы отвечены
-      setTimeout(() => {
-        speak('Молодец! Ты ответил на все вопросы. Теперь отправим результат.')
-        setPhase('report')
-      }, 1000)
-    }
-  }
-
-  async function handleSendReport() {
-    if (!validateEmail(email)) {
-      setEmailErr('Введи правильный e-mail адрес')
-      return
-    }
-    setEmailErr('')
-    setSending(true)
-    setSendErr('')
-
-    const sessionData = {
-      childName: childName || 'Ученик',
-      author:    meta?.author || '—',
-      title:     meta?.title  || '—',
-      text,
-      transcript,
-      retellingScore:   analysis?.score   ?? 0,
-      retellingVerdict: analysis?.verdict ?? 'poor',
-      missedPoints:     analysis?.missed  ?? [],
-      questions:        answers,
-      email,
-      createdAt: new Date().toISOString(),
-    }
-
-    // Сохраняем в локальную историю
-    sessionStore.add(sessionData)
-
+  async function submitAnswer() {
+    if (!qAnswer.trim()) return
+    setQLoading(true)
     try {
-      await sendReport(sessionData)
-      setSent(true)
-      setPhase('done')
-    } catch (e) {
-      setSendErr('Не удалось отправить отчёт: ' + e.message)
+      const res = await checkAnswer(questions[qIndex].text, qAnswer, text)
+      setQResult(res)
+      setQAttempts(a => a + 1)
+      if (res.result === 'correct') speak('Правильно! Отлично!')
+      else if (qAttempts + 1 >= MAX_ATT) speak(`Правильный ответ: ${res.correctAnswer}`)
+      else speak('Не совсем верно. Посмотри на текст и попробуй снова.')
     } finally {
-      setSending(false)
+      setQLoading(false)
     }
   }
 
-  function skipEmail() {
-    const sessionData = {
+  function nextQuestion() {
+    const entry = { question: questions[qIndex].text, userAnswer: qAnswer, ...qResult }
+    const newAnswers = [...answers, entry]
+    setAnswers(newAnswers)
+    setQResult(null); setQAnswer(''); setQAttempts(0)
+    if (qIndex + 1 < questions.length) {
+      setQIndex(i => i + 1)
+    } else {
+      setTimeout(() => {
+        speak('Молодец! Ты ответил на все вопросы!')
+        setPhase('report')
+      }, 600)
+    }
+  }
+
+  function retryAnswer() {
+    setQResult(null); setQAnswer('')
+  }
+
+  async function handleSend() {
+    if (!validateEmail(email)) { setEmailErr('Введи правильный e-mail'); return }
+    setEmailErr(''); setSending(true); setSendErr('')
+    const data = {
       childName: childName || 'Ученик',
       author:  meta?.author || '—',
       title:   meta?.title  || '—',
@@ -95,176 +80,238 @@ export default function ResultPage() {
       retellingVerdict: analysis?.verdict ?? 'poor',
       missedPoints:     analysis?.missed  ?? [],
       questions: answers,
-      email: null,
+      email,
       createdAt: new Date().toISOString(),
     }
-    sessionStore.add(sessionData)
+    sessionStore.add(data)
+    try {
+      await sendReport(data)
+      setSent(true); setPhase('done')
+    } catch (e) {
+      setSendErr('Не удалось отправить: ' + e.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  function skipEmail() {
+    sessionStore.add({
+      childName: childName || 'Ученик',
+      author: meta?.author || '—', title: meta?.title || '—',
+      text, transcript,
+      retellingScore: analysis?.score ?? 0,
+      retellingVerdict: analysis?.verdict ?? 'poor',
+      missedPoints: analysis?.missed ?? [],
+      questions: answers, email: null,
+      createdAt: new Date().toISOString(),
+    })
     setPhase('done')
   }
 
-  const correctCount = answers.filter(a => a.result === 'correct').length
-  const partialCount = answers.filter(a => a.result === 'partial').length
+  // ── Конфетти ──
+  useEffect(() => {
+    if (phase !== 'done') return
+    const wrap = document.createElement('div')
+    wrap.className = 'confetti-layer'
+    document.body.appendChild(wrap)
+    const colors = ['#FF6B6B','#FFD43B','#51CF66','#339AF0','#FF922B','#CC5DE8']
+    for (let i = 0; i < 32; i++) {
+      const c = document.createElement('div')
+      c.className = 'conf-piece'
+      c.style.cssText = `
+        left:${Math.random()*100}%;
+        background:${colors[i%colors.length]};
+        animation-delay:${Math.random()*1.4}s;
+        animation-duration:${1.6+Math.random()*0.8}s;
+        width:${6+Math.random()*7}px;
+        height:${6+Math.random()*7}px;
+        border-radius:${Math.random()>0.5?'50%':'2px'};
+      `
+      wrap.appendChild(c)
+    }
+    return () => { document.body.removeChild(wrap) }
+  }, [phase])
+
+  const canRetry   = qResult && qResult.result !== 'correct' && qAttempts < MAX_ATT
+  const showAnswer = qResult && qResult.result !== 'correct' && qAttempts >= MAX_ATT
 
   return (
-    <div className="space-y-5">
+    <div className="page-content">
 
-      {/* Фаза: вопросы */}
+      {/* ── Вопросы ── */}
       {phase === 'questions' && (
         <>
-          <div className="text-center pt-2">
-            <h1 className="text-2xl font-extrabold text-gray-800">💬 Ответь на вопросы</h1>
-            <p className="text-gray-500 text-sm mt-1">5 вопросов по тексту</p>
+          <div className="hero-block">
+            <div className="hero-emoji-wrap result">💬</div>
+            <h1>Ответь на вопросы</h1>
+            <p>5 вопросов по тексту</p>
           </div>
 
-          <QuestionCard
-            key={qIndex}
-            question={questions[qIndex]}
-            questionNum={qIndex + 1}
-            total={questions.length}
-            onAnswer={async (q, a) => {
-              const res = await handleAnswer(q, a)
-              // Небольшая задержка чтобы пользователь увидел результат
-              setTimeout(() => handleAnswerDone(q, a, res), 1500)
-              return res
-            }}
-          />
+          <div className="card">
+            <div className="q-progress-row">
+              <span className="q-label">Вопрос {qIndex+1} из {questions.length}</span>
+              <div className="q-dots">
+                {questions.map((_,i) => (
+                  <div key={i} className={`q-dot ${i<qIndex?'done':i===qIndex?'active':''}`}/>
+                ))}
+              </div>
+            </div>
+
+            <div className="question-bubble">{questions[qIndex].text}</div>
+
+            {!qResult || canRetry ? (
+              <>
+                <textarea
+                  className="text-area"
+                  rows={3}
+                  placeholder="Напиши ответ здесь..."
+                  value={qAnswer}
+                  onChange={e => setQAnswer(e.target.value)}
+                  disabled={qLoading}
+                  style={{ marginBottom: 10 }}
+                />
+                {canRetry && (
+                  <div className="error-box" style={{ marginBottom: 10 }}>
+                    <span>🔁</span>
+                    <span>Не совсем верно. Посмотри на текст и попробуй снова.</span>
+                  </div>
+                )}
+                <button className="btn btn-blue"
+                  onClick={canRetry ? retryAnswer || submitAnswer : submitAnswer}
+                  disabled={!qAnswer.trim() || qLoading}>
+                  {qLoading ? 'Проверяю...' : canRetry ? 'Попробовать снова' : 'Ответить ↗'}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className={`answer-result ${qResult.result}`} style={{ marginBottom: 10 }}>
+                  <span className="ar-icon">
+                    {qResult.result==='correct'?'✅':qResult.result==='partial'?'🟡':'❌'}
+                  </span>
+                  <div className="ar-text">
+                    <strong>
+                      {qResult.result==='correct'?'Верно!':qResult.result==='partial'?'Почти верно':'Неверно'}
+                    </strong>
+                    {' '}{qResult.explanation}
+                    {showAnswer && qResult.correctAnswer && (
+                      <div style={{ marginTop: 4 }}>
+                        <strong>Правильный ответ:</strong> {qResult.correctAnswer}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button className="btn btn-blue" onClick={nextQuestion}>
+                  {qIndex+1 < questions.length ? 'Следующий вопрос →' : 'Завершить →'}
+                </button>
+              </>
+            )}
+          </div>
         </>
       )}
 
-      {/* Фаза: ввод email и отправка отчёта */}
+      {/* ── Отчёт ── */}
       {phase === 'report' && (
         <>
-          <div className="text-center pt-2">
-            <h1 className="text-2xl font-extrabold text-gray-800">📊 Итоговый результат</h1>
+          <div className="hero-block">
+            <div className="hero-emoji-wrap final">📊</div>
+            <h1>Итоговый результат</h1>
           </div>
 
-          {/* Краткий итог */}
-          <div className="card space-y-3">
-            <h2 className="font-bold text-gray-800">Результаты сессии</h2>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-sky-50 rounded-2xl p-3 text-center">
-                <p className="text-2xl font-extrabold text-primary-600">{analysis?.score ?? 0}%</p>
-                <p className="text-xs text-gray-500 mt-0.5">полнота пересказа</p>
-              </div>
-              <div className="bg-green-50 rounded-2xl p-3 text-center">
-                <p className="text-2xl font-extrabold text-green-600">
-                  {correctCount + partialCount}/{questions.length}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">верных ответов</p>
-              </div>
+          <div className="score-grid">
+            <div className="score-cell">
+              <div className="score-num orange">{analysis?.score ?? 0}%</div>
+              <div className="score-label">Пересказ</div>
+            </div>
+            <div className="score-cell">
+              <div className="score-num green">{correctCnt+partialCnt}/{questions.length}</div>
+              <div className="score-label">Вопросы</div>
             </div>
           </div>
 
-          {/* Форма отчёта */}
-          <div className="card space-y-4">
-            <h2 className="font-bold text-gray-800">📧 Отправить отчёт на почту</h2>
-            <p className="text-sm text-gray-500">
-              Родитель или учитель получит подробный отчёт с транскрипцией пересказа и ответами на вопросы.
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <span className="card-label">📧 Отправить отчёт на почту</span>
+            <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
+              Родитель или учитель получит подробный отчёт с транскрипцией и ответами.
             </p>
-
-            <input
-              className="input-field"
-              placeholder="Имя ребёнка (необязательно)"
-              value={childName}
-              onChange={e => setChildName(e.target.value)}
-            />
+            <input className="input-field" placeholder="Имя ребёнка (необязательно)"
+              value={childName} onChange={e => setChildName(e.target.value)} />
             <div>
-              <input
-                className={`input-field ${emailErr ? 'border-red-300 focus:ring-red-300' : ''}`}
-                type="email"
-                placeholder="E-mail родителя или учителя"
+              <input className="input-field" type="email" placeholder="E-mail родителя или учителя"
                 value={email}
                 onChange={e => { setEmail(e.target.value); setEmailErr('') }}
+                style={emailErr ? { borderColor: 'var(--coral)' } : {}}
               />
-              {emailErr && <p className="text-xs text-red-500 mt-1">{emailErr}</p>}
+              {emailErr && <p style={{ fontSize: 12, color: 'var(--coral)', marginTop: 4 }}>{emailErr}</p>}
             </div>
-
             {sendErr && (
-              <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700">
-                ⚠️ {sendErr}
-              </div>
+              <div className="error-box"><span>⚠️</span><span>{sendErr}</span></div>
             )}
-
-            <p className="text-xs text-gray-400">
-              Нажимая «Отправить», ты соглашаешься на обработку e-mail для отправки отчёта.
-              Данные не передаются третьим лицам.
+            <p style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
+              Нажимая «Отправить», ты соглашаешься на обработку e-mail. Данные не передаются третьим лицам.
             </p>
-
-            <button
-              className="btn-primary w-full"
-              onClick={handleSendReport}
-              disabled={sending}
-            >
-              {sending ? 'Отправляю...' : 'Отправить отчёт'}
+            <button className="btn btn-primary" onClick={handleSend} disabled={sending}>
+              {sending ? 'Отправляю...' : '📧 Отправить отчёт'}
             </button>
-            <button className="text-sm text-gray-400 hover:text-gray-600 w-full text-center underline"
-              onClick={skipEmail}>
+            <button onClick={skipEmail}
+              style={{ fontSize: 13, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
               Пропустить, перейти к итогам
             </button>
           </div>
         </>
       )}
 
-      {/* Фаза: финальный экран */}
+      {/* ── Финал ── */}
       {phase === 'done' && (
         <>
-          <div className="text-center pt-2">
-            <div className="text-5xl mb-3">🏆</div>
-            <h1 className="text-2xl font-extrabold text-gray-800">Молодец!</h1>
-            <p className="text-gray-500 text-sm mt-1">Ты завершил(а) задание</p>
+          <div className="final-hero">
+            <span className="trophy-icon">🏆</span>
+            <h1 className="final-title">Молодец!</h1>
+            <p className="final-sub">Ты завершил(а) задание</p>
           </div>
 
-          {/* Итоговая карточка */}
-          <div className="card space-y-4">
+          <div className="stars-row">⭐⭐⭐⭐</div>
+
+          <div className="score-grid">
+            <div className="score-cell">
+              <div className="score-num orange">{analysis?.score ?? 0}%</div>
+              <div className="score-label">Пересказ</div>
+            </div>
+            <div className="score-cell">
+              <div className="score-num green">{correctCnt+partialCnt}/{questions.length}</div>
+              <div className="score-label">Вопросы</div>
+            </div>
+          </div>
+
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(meta?.title || meta?.author) && (
-              <div>
-                {meta.title  && <p className="font-semibold text-gray-800">{meta.title}</p>}
-                {meta.author && <p className="text-sm text-gray-500">{meta.author}</p>}
+              <div style={{ paddingBottom: 10, borderBottom: '1.5px solid var(--border)' }}>
+                {meta.title  && <p style={{ fontWeight: 800, fontSize: 14 }}>{meta.title}</p>}
+                {meta.author && <p style={{ fontSize: 13, color: 'var(--muted)' }}>{meta.author}</p>}
               </div>
             )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-sky-50 rounded-2xl p-3 text-center">
-                <p className="text-2xl font-extrabold text-primary-600">{analysis?.score ?? 0}%</p>
-                <p className="text-xs text-gray-500 mt-0.5">пересказ</p>
-              </div>
-              <div className="bg-green-50 rounded-2xl p-3 text-center">
-                <p className="text-2xl font-extrabold text-green-600">
-                  {correctCount + partialCount}/{questions.length}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">вопросы</p>
-              </div>
-            </div>
-
-            {/* Ответы на вопросы */}
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-700">Ответы на вопросы:</p>
-              {answers.map((a, i) => (
-                <div key={i} className={`rounded-2xl px-3 py-2 text-sm flex gap-2 items-start
-                  ${a.result === 'correct' ? 'bg-green-50' :
-                    a.result === 'partial'  ? 'bg-yellow-50' : 'bg-red-50'}`}>
-                  <span>{a.result === 'correct' ? '✅' : a.result === 'partial' ? '🟡' : '❌'}</span>
-                  <div>
-                    <p className="font-medium text-gray-700">{questions[i]?.text}</p>
-                    <p className="text-gray-500 text-xs mt-0.5">Твой ответ: {a.userAnswer}</p>
-                    {a.result !== 'correct' && a.correctAnswer && (
-                      <p className="text-gray-600 text-xs mt-0.5">Правильно: {a.correctAnswer}</p>
-                    )}
-                  </div>
+            <span className="card-label">Ответы на вопросы</span>
+            {answers.map((a, i) => (
+              <div key={i} className={`answer-result ${a.result}`}>
+                <span className="ar-icon">
+                  {a.result==='correct'?'✅':a.result==='partial'?'🟡':'❌'}
+                </span>
+                <div className="ar-text">
+                  <strong>{questions[i]?.text}</strong>
+                  <div style={{ marginTop: 2, color: 'var(--muted)' }}>Твой ответ: {a.userAnswer}</div>
+                  {a.result!=='correct' && a.correctAnswer && (
+                    <div style={{ marginTop: 2 }}>Правильно: {a.correctAnswer}</div>
+                  )}
                 </div>
-              ))}
-            </div>
-
-            {sent && (
-              <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 text-sm text-green-700 text-center">
-                ✅ Отчёт отправлен на {email}
               </div>
-            )}
+            ))}
           </div>
 
-          <button className="btn-primary w-full" onClick={() => navigate('/')}>
-            Начать заново 📖
+          {sent && (
+            <div className="success-box">✅ Отчёт отправлен на {email}</div>
+          )}
+
+          <button className="btn btn-primary" onClick={() => navigate('/')}>
+            📖 Начать заново
           </button>
         </>
       )}
