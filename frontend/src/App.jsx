@@ -1,24 +1,23 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { UserProvider } from './config/userContext.jsx'
-import UploadPage  from './pages/UploadPage.jsx'
-import RetellPage  from './pages/RetellPage.jsx'
-import ResultPage  from './pages/ResultPage.jsx'
-import Header      from './components/Header.jsx'
+import UploadPage from './pages/UploadPage.jsx'
+import RetellPage from './pages/RetellPage.jsx'
+import ResultPage from './pages/ResultPage.jsx'
+import Header     from './components/Header.jsx'
+// Новый дизайн подключается через src/styles/index.css
 
 export default function App() {
   return (
     <UserProvider>
       <BrowserRouter>
-        <div className="min-h-screen flex flex-col">
+        <div className="app-container">
           <Header />
-          <main className="flex-1 container mx-auto max-w-2xl px-4 py-6">
-            <Routes>
-              <Route path="/"        element={<UploadPage />} />
-              <Route path="/retell"  element={<RetellPage />} />
-              <Route path="/result"  element={<ResultPage />} />
-              <Route path="*"        element={<Navigate to="/" replace />} />
-            </Routes>
-          </main>
+          <Routes>
+            <Route path="/"       element={<UploadPage />} />
+            <Route path="/retell" element={<RetellPage />} />
+            <Route path="/result" element={<ResultPage />} />
+            <Route path="*"       element={<Navigate to="/" replace />} />
+          </Routes>
         </div>
       </BrowserRouter>
     </UserProvider>
