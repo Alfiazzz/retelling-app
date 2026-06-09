@@ -1,17 +1,14 @@
 export default function ProgressBar({ value = 0, label = '' }) {
   return (
-    <div className="w-full">
+    <div style={{ width: '100%' }}>
       {label && (
-        <div className="flex justify-between text-sm text-gray-500 mb-1">
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>
           <span>{label}</span>
-          <span>{value}%</span>
+          <span style={{ fontWeight: 700 }}>{value}%</span>
         </div>
       )}
-      <div className="w-full bg-sky-100 rounded-full h-2.5 overflow-hidden">
-        <div
-          className="bg-primary-500 h-2.5 rounded-full transition-all duration-300"
-          style={{ width: `${Math.min(100, value)}%` }}
-        />
+      <div className="acc-track">
+        <div className="acc-fill" style={{ width: `${Math.min(100, value)}%` }} />
       </div>
     </div>
   )
