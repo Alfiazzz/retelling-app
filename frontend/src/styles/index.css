@@ -171,7 +171,7 @@ body::before {
 /* ── Основной контент ── */
 .page-content {
   flex: 1;
-  padding: 16px 20px 32px;
+  padding: 16px 20px 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -180,15 +180,15 @@ body::before {
 /* ── Hero-блок ── */
 .hero-block {
   text-align: center;
-  padding: 8px 0 4px;
+  padding: 4px 0 0;
 }
 .hero-emoji-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 80px; height: 80px;
+  width: 68px; height: 68px;
   border-radius: var(--radius-lg);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   position: relative;
   font-size: 36px;
 }
