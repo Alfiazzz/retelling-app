@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit'
 import aiRoutes     from './routes/ai.js'
 import reportRoutes from './routes/report.js'
 import authRoutes   from './routes/auth.js'
-
+import notifyRoutes from './routes/notify.js'
 const app  = express()
 const PORT = process.env.PORT ?? 3001
 
@@ -33,7 +33,7 @@ app.use('/api', limiter)
 app.use('/api/ai',     aiRoutes)
 app.use('/api/report', reportRoutes)
 app.use('/api/auth',   authRoutes)
-
+app.use('/api/notify', notifyRoutes)
 app.get('/health', (_req, res) => res.json({ ok: true }))
 
 app.use((err, _req, res, _next) => {
