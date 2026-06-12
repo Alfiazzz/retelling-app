@@ -9,8 +9,15 @@ import authRoutes   from './routes/auth.js'
 const app  = express()
 const PORT = process.env.PORT ?? 3001
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL ?? '*',
+app.use(corsLib({
+  origin: (origin, callback) => {
+    const allowed = (process.env.FRONTEND_URL ?? '*').split(',').map(s => s.trim())
+    if (!origin || allowed.includes('*') || allowed.includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error('CORS: домен не разрешён'))
+    }
+  },
   methods: ['GET', 'POST'],
 }))
 app.use(express.json({ limit: '2mb' }))
