@@ -23,11 +23,29 @@ export default function RetellPage() {
   const [error,      setError]      = useState('')
   const [analysis,   setAnalysis]   = useState(null)
   const [showText,   setShowText]   = useState(false)
-
+const [showPaywall,   setShowPaywall]   = useState(false)
+      const [paywallPaid,   setPaywallPaid]   = useState(false)
+      const [paywallLoading,setPaywallLoading]= useState(false)
+      const [paywallError,  setPaywallError]  = useState('')
   const recRef     = useRef(null)
   const timerRef   = useRef(null)
   const silenceRef = useRef(null)
-
+async function handlePaywall() {
+      setPaywallLoading(true)
+      setPaywallError('')
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:3001'}/api/notify/payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timestamp: new Date().toISOString() }),
+        })
+      } catch (e) {
+        // не блокируем пользователя даже если уведомление не ушло
+        console.log('Уведомление не отправлено:', e.message)
+      }
+      setPaywallPaid(true)
+      setPaywallLoading(false)
+    }
   useEffect(() => {
     if (phase === 'recording') {
       timerRef.current = setInterval(() => {
