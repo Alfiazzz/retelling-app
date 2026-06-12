@@ -9,7 +9,7 @@ import authRoutes   from './routes/auth.js'
 const app  = express()
 const PORT = process.env.PORT ?? 3001
 
-app.use(corsLib({
+app.use(cors({
   origin: (origin, callback) => {
     const allowed = (process.env.FRONTEND_URL ?? '*').split(',').map(s => s.trim())
     if (!origin || allowed.includes('*') || allowed.includes(origin)) {
