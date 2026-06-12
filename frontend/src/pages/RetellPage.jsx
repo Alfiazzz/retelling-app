@@ -234,10 +234,88 @@ export default function RetellPage() {
               {analysis.verdict !== 'good' && (
                 <button className="btn btn-secondary btn-sm" onClick={resetRecording}>↩ Снова</button>
               )}
-              <button className="btn btn-blue btn-sm"
-                onClick={() => navigate('/result', { state: { text, meta, transcript, analysis } })}>
-                К вопросам →
-              </button>
+              <button className="btn btn-blue btn-sm" onClick={() => setShowPaywall(true)}>
+          К вопросам →
+        </button>
+
+{showPaywall && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px',
+          }}>
+            <div style={{
+              background: '#fff', borderRadius: 24, padding: '28px 24px',
+              maxWidth: 360, width: '100%', textAlign: 'center',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+            }}>
+              {!paywallPaid ? (
+                <>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>🔐</div>
+                  <h2 style={{
+                    fontFamily: 'Fredoka One, cursive', fontSize: 22,
+                    color: '#1A1A2E', marginBottom: 10,
+                  }}>
+                    Продолжить за 49 ₽
+                  </h2>
+                  <p style={{ fontSize: 14, color: '#8B8FA8', lineHeight: 1.6, marginBottom: 20 }}>
+                    Чтобы ответить на вопросы по тексту и получить подробный отчёт на e-mail — оплати доступ на 24 часа.
+                  </p>
+                  <div style={{
+                    background: '#FFF3CD', borderRadius: 16, padding: '12px 16px',
+                    marginBottom: 20, fontSize: 13, color: '#854F0B', fontWeight: 700,
+                  }}>
+                    💳 Стоимость: 49 ₽ / 24 часа
+                  </div>
+                  {paywallError && (
+                    <div style={{ background: '#FFF0EE', borderRadius: 12, padding: '10px 14px',
+                      marginBottom: 14, fontSize: 13, color: '#C0392B' }}>
+                      ⚠️ {paywallError}
+                    </div>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    onClick={handlePaywall}
+                    disabled={paywallLoading}
+                    style={{ marginBottom: 10 }}
+                  >
+                    {paywallLoading ? 'Подождите...' : '💳 Оплатить 49 ₽'}
+                  </button>
+                  <button
+                    onClick={() => setShowPaywall(false)}
+                    style={{ fontSize: 13, color: '#8B8FA8', background: 'none',
+                      border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Отмена
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 56, marginBottom: 12 }}>🎉</div>
+                  <h2 style={{
+                    fontFamily: 'Fredoka One, cursive', fontSize: 22,
+                    color: '#1A1A2E', marginBottom: 10,
+                  }}>
+                    Поздравляем!
+                  </h2>
+                  <p style={{ fontSize: 14, color: '#8B8FA8', lineHeight: 1.6, marginBottom: 24 }}>
+                    Ты выиграл(а) бесплатный доступ! Ничего платить не нужно — продолжай пользоваться сервисом.
+                  </p>
+                  <button
+                    className="btn btn-green"
+                    onClick={() => {
+                      setShowPaywall(false)
+                      navigate('/result', { state: { text, meta, transcript, analysis } })
+                    }}
+                  >
+                    Перейти к вопросам →
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
             </div>
           </>
         )}
