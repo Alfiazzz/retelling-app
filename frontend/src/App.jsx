@@ -4,6 +4,7 @@ import UploadPage from './pages/UploadPage.jsx'
 import RetellPage from './pages/RetellPage.jsx'
 import ResultPage from './pages/ResultPage.jsx'
 import Header     from './components/Header.jsx'
+import { MetrikaCounter } from 'react-metrika';
 // Новый дизайн подключается через src/styles/index.css
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
           </Routes>
         </div>
       </BrowserRouter>
+      <MetrikaCounter id={109776856} options={{ webvisor: true, clickmap: true, trackLinks: true, accurateTrackBounce: true }} />
     </UserProvider>
   )
 }
