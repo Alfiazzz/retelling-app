@@ -32,7 +32,7 @@ function buildHtml(data) {
 <body style="font-family:Arial,sans-serif;background:#f0f9ff;padding:20px">
 <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
   <div style="background:linear-gradient(135deg,#FF6B6B,#FF922B);padding:24px 32px">
-    <h1 style="margin:0;color:#fff;font-size:22px">📖 Отчёт о пересказе — Пересказка-ai</h1>
+    <h1 style="margin:0;color:#fff;font-size:22px">📖 Отчёт о пересказе — <a href="https://pereskazka-ai.ru" target="_blank" rel="noopener noreferrer" style="color:#fff;text-decoration:underline;">Пересказка-ai</a></h1>
     <p style="margin:4px 0 0;color:#FFE8D6;font-size:14px">${date}</p>
   </div>
   <div style="padding:24px 32px">
