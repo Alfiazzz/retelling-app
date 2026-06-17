@@ -66,7 +66,7 @@ function buildHtml(data) {
     <p style="background:#F9F5EE;padding:12px;border-radius:8px;font-size:13px;line-height:1.6;color:#374151">${transcript || '—'}</p>
   </div>
   <div style="background:#FFF9F0;padding:16px 32px;text-align:center">
-    <p style="margin:0;font-size:12px;color:#9ca3af">Пересказка-ai — сервис проверки пересказа текста</p>
+    <p style="margin:0;font-size:12px;color:#9ca3af"><a href="https://pereskazka-ai.ru" target="_blank" rel="noopener noreferrer" style="color:#9ca3af;text-decoration:underline;">Пересказка-ai.ru</a> — сервис проверки пересказа текста</p>
   </div>
 </div>
 </body></html>`
