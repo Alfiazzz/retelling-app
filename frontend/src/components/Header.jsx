@@ -19,7 +19,7 @@ export default function Header() {
           <div className="logo-icon">📖</div>
           <span>
             <span className="logo-text-main">Пересказка</span>
-            <span className="logo-text-dot">.</span>
+            <span className="logo-text-dot">-</span>
             <span className="logo-text-ai">ai</span>
           </span>
         </a>
