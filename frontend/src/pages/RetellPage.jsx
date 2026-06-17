@@ -278,7 +278,7 @@ async function handlePaywall() {
                     Продолжить за 49 ₽
                   </h2>
                   <p style={{ fontSize: 14, color: '#8B8FA8', lineHeight: 1.6, marginBottom: 20 }}>
-                    Чтобы ответить на вопросы по тексту и получить подробный отчёт на e-mail — оплати доступ на 24 часа.
+                    Чтобы ответить на вопросы по тексту и получить подробный отчёт на e-mail — оплатите доступ на 24 часа.
                   </p>
                   <div style={{
                     background: '#FFF3CD', borderRadius: 16, padding: '12px 16px',
