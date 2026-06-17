@@ -94,7 +94,7 @@ export async function sendReport(data) {
         to: { email },
         from: {
           email: `noreply@pereskazka-ai.ru`,
-          name: 'Пересказка.ai',
+          name: 'Пересказка-ai',
         },
         subject,
         html: buildHtml(data),
