@@ -4,6 +4,7 @@ const STEPS = [
   { path: '/',       label: 'Текст',    num: 1 },
   { path: '/retell', label: 'Пересказ', num: 2 },
   { path: '/result', label: 'Вопросы',  num: 3 },
+  { path: '/report', label: 'Отчёт',    num: 4 },
 ]
 
 export default function Header() {
