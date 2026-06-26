@@ -1,9 +1,28 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 
 const router = Router()
 
-router.post('/payment', async (req, res) => {
-  const { timestamp } = req.body
+// Этот роут реально отправляет письмо через RuSender при каждом вызове —
+// в отличие от остальных роутов, он не защищён ничем, кроме общего
+// лимита 30/мин на весь /api. Каждый вызов стоит реальных денег/квоты
+// стороннего сервиса и шлёт письмо на личный адрес владельца, поэтому
+// здесь нужен отдельный, более жёсткий лимит — иначе это лёгкий вектор
+// для спама почты владельца и исчерпания квоты RuSender.
+const paymentNotifyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { ok: true }, // отвечаем как обычно — фронту не нужно знать о лимите
+  validate: { xForwardedForHeader: false },
+})
+
+router.post('/payment', paymentNotifyLimiter, async (req, res) => {
+  // Время фиксируем на сервере, а не берём из тела запроса: клиентский
+  // timestamp — не только ненадёжный источник времени (его можно подделать),
+  // но и был бы пользовательским вводом, вставляемым в HTML письма без
+  // экранирования. Используя серверное время, убираем этот вектор целиком,
+  // а не просто экранируем его.
+  const timestamp = new Date().toISOString()
   console.log(`Пользователь нажал "Оплатить" в ${timestamp}`)
 
   try {
@@ -44,7 +63,6 @@ router.post('/payment', async (req, res) => {
         }),
       })
       const result = await response.json().catch(() => ({}))
-      console.log(`RuSender ответ: ${response.status}`, JSON.stringify(result))
       if (response.ok) {
         console.log('✅ Уведомление отправлено на 5005404@mail.ru')
       } else {
