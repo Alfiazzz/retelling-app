@@ -1,35 +1,64 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { recognizeMultiplePages, countWords, classifyLength } from '../services/ocrService.js'
+import { moderateText } from '../services/aiService.js'
 import ProgressBar from '../components/ProgressBar.jsx'
 
 export default function UploadPage() {
   const navigate  = useNavigate()
   const fileRef   = useRef(null)
 
-  const [files,    setFiles]    = useState([])
-  const [previews, setPreviews] = useState([])
-  const [ocr,      setOcr]      = useState(null)
-  const [progress, setProgress] = useState(0)
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState('')
-  const [editText, setEditText] = useState('')
-  const [meta,     setMeta]     = useState({ author: '', title: '' })
+  const [files,      setFiles]      = useState([])
+  const [previews,   setPreviews]   = useState([])
+  const [ocr,        setOcr]        = useState(null)
+  const [progress,   setProgress]   = useState(0)
+  const [loading,    setLoading]    = useState(false)
+  const [moderating, setModerating] = useState(false)
+  const [error,      setError]      = useState('')
+  const [editText,   setEditText]   = useState('')
+
+  const MAX_FILES    = 10
+  const MAX_FILE_MB  = 10
+  const MAX_FILE_SIZE = MAX_FILE_MB * 1024 * 1024
 
   function handleFiles(selected) {
-    const arr = Array.from(selected).filter(f => {
+    const allSelected = Array.from(selected)
+    const byType = allSelected.filter(f => {
       if (f.type.startsWith('image/')) return true
       const ext = f.name.split('.').pop().toLowerCase()
       return ['jpg','jpeg','png'].includes(ext)
     })
-    if (!arr.length) {
+    if (!byType.length) {
       setError('Поддерживаются форматы: JPG, PNG')
       return
     }
-    setFiles(arr)
+
+    // Отсекаем слишком большие файлы по отдельности — это даёт понятную
+    // обратную связь (какие именно файлы не подошли), а не просто блокирует
+    // всю загрузку целиком из-за одного большого фото.
+    const tooLarge = byType.filter(f => f.size > MAX_FILE_SIZE)
+    const byTypeAndSize = byType.filter(f => f.size <= MAX_FILE_SIZE)
+
+    // Лимит количества — берём первые MAX_FILES, остальное игнорируем
+    // с предупреждением (как и описано для случая превышения лимита страниц).
+    const limited = byTypeAndSize.slice(0, MAX_FILES)
+    const droppedByLimit = byTypeAndSize.length - limited.length
+
+    if (!limited.length) {
+      setError(tooLarge.length
+        ? `Файл слишком большой (максимум ${MAX_FILE_MB} МБ).`
+        : 'Поддерживаются форматы: JPG, PNG')
+      return
+    }
+
+    const warnings = []
+    if (tooLarge.length) warnings.push(`Пропущено файлов слишком большого размера (>${MAX_FILE_MB} МБ): ${tooLarge.length}`)
+    if (droppedByLimit > 0) warnings.push(`Загружено максимум ${MAX_FILES} файлов, остальные (${droppedByLimit}) не учтены`)
+
+    setFiles(limited)
     setOcr(null)
-    setError('')
-    const readers = arr.map(f => new Promise(res => {
+    setError(warnings.join('. '))
+    const readers = limited.map(f => new Promise(res => {
       const r = new FileReader()
       r.onload = e => res(e.target.result)
       r.readAsDataURL(f)
@@ -48,7 +77,12 @@ export default function UploadPage() {
     setProgress(0)
     try {
       const result = await recognizeMultiplePages(files, setProgress)
-      if (result.confidence < 40) {
+      if (!result.looksRussian) {
+        // Конкретная причина важнее общего "качество фото низкое" — текст
+        // мог распознаться технически нормально, просто не на том языке,
+        // под который настроен OCR (Tesseract здесь работает только с 'rus').
+        setError('Похоже, текст не на русском языке. Сервис распознаёт и проверяет тексты только на русском.')
+      } else if (result.confidence < 40) {
         setError('Качество фото низкое. Попробуй переснять — лучше освещение, ровнее держи камеру.')
       }
       setOcr(result)
@@ -60,11 +94,25 @@ export default function UploadPage() {
     }
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     const text      = editText.trim()
     const wordCount = countWords(text)
     const length    = classifyLength(wordCount)
-    navigate('/retell', { state: { text, wordCount, length, meta, confidence: ocr?.confidence } })
+
+    setModerating(true)
+    setError('')
+    try {
+      const result = await moderateText(text)
+      if (result.blocked) {
+        setError(result.message)
+        return
+      }
+      navigate('/retell', { state: { text, wordCount, length, confidence: ocr?.confidence } })
+    } catch (e) {
+      setError('Не удалось проверить текст: ' + e.message)
+    } finally {
+      setModerating(false)
+    }
   }
 
   const wordCount = editText ? countWords(editText) : 0
@@ -169,24 +217,14 @@ export default function UploadPage() {
             {wordCount} слов · {ocr.pages > 1 ? `${ocr.pages} страниц` : '1 страница'} · можно исправить вручную
           </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1.5px solid var(--border)', paddingTop: 12 }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-              Автор и название <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(если знаешь)</span>
-            </p>
-            <input className="input-field" placeholder="Автор произведения"
-              value={meta.author} onChange={e => setMeta(m => ({ ...m, author: e.target.value }))} />
-            <input className="input-field" placeholder="Название произведения"
-              value={meta.title} onChange={e => setMeta(m => ({ ...m, title: e.target.value }))} />
-          </div>
-
           <div className="btn-row">
             <button className="btn btn-secondary btn-sm"
               onClick={() => { setOcr(null); setFiles([]); setPreviews([]) }}>
               ← Заново
             </button>
             <button className="btn btn-primary btn-sm"
-              onClick={handleContinue} disabled={!editText.trim()}>
-              К пересказу →
+              onClick={handleContinue} disabled={!editText.trim() || moderating}>
+              {moderating ? 'Проверяю...' : 'К пересказу →'}
             </button>
           </div>
         </div>
