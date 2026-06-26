@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { createSpeechRecognizer, isSpeechRecognitionSupported, speak } from '../services/speechService.js'
 import { analyzeRetelling } from '../services/aiService.js'
+import { checkLooksRussian } from '../services/languageCheckService.js'
 
 const SILENCE_MS = 30_000
 
@@ -13,7 +14,7 @@ export default function RetellPage() {
   useEffect(() => { if (!state?.text) navigate('/') }, [])
   if (!state?.text) return null
 
-  const { text, wordCount, length, meta } = state
+  const { text, wordCount, length } = state
   const maxSecs = length.maxRecordMin * 60
 
   const [phase,      setPhase]      = useState('intro')
@@ -23,6 +24,7 @@ export default function RetellPage() {
   const [error,      setError]      = useState('')
   const [analysis,   setAnalysis]   = useState(null)
   const [showText,   setShowText]   = useState(false)
+  const [injectionAttempts, setInjectionAttempts] = useState(0)
 const [showPaywall,   setShowPaywall]   = useState(false)
       const [paywallPaid,   setPaywallPaid]   = useState(false)
       const [paywallLoading,setPaywallLoading]= useState(false)
@@ -88,8 +90,26 @@ async function handlePaywall() {
   function pauseRecording() {
     recRef.current?.stop(); clearTimeout(silenceRef.current); setPhase('paused')
   }
+
   function resumeRecording() {
-    recRef.current?.start(); setPhase('recording')
+    // Web Speech API не поддерживает настоящую "паузу": после stop() объект
+    // SpeechRecognition завершён и его нельзя надёжно перезапустить через start()
+    // в Chrome/Edge — нужен новый экземпляр. При этом resume() на новом объекте
+    // начинает finalTranscript с уже накопленного текста (передаём transcript из
+    // state), чтобы новые слова дописывались, а не затирали старые.
+    const rec = createSpeechRecognizer({
+      onResult: ({ final, interim: int }) => {
+        setTranscript(final); setInterim(int)
+        clearTimeout(silenceRef.current)
+        silenceRef.current = setTimeout(() => speak('Ты ещё здесь? Продолжай пересказ.'), SILENCE_MS)
+      },
+      onEnd: (final) => { setTranscript(final); setInterim(''); clearTimeout(silenceRef.current) },
+      onError: (msg) => setError(msg),
+    })
+    if (!rec) return
+    recRef.current = rec
+    rec.resume(transcript)
+    setPhase('recording')
   }
   function stopRecording() {
     recRef.current?.stop(); clearTimeout(silenceRef.current); setPhase('analyzing')
@@ -106,8 +126,39 @@ async function handlePaywall() {
       setError('Пересказ слишком короткий. Попробуй ещё раз.')
       setPhase('intro'); return
     }
+    if (!checkLooksRussian(t).looksRussian) {
+      // Web Speech API настроен на 'ru-RU' и не умеет сообщать "это не тот
+      // язык" сам по себе — он просто на лету подгоняет звук под русские
+      // фонемы, выдавая искажённый текст. Проверяем уже готовую расшифровку,
+      // без дополнительного ожидания, и не идём с этим текстом к GigaChat —
+      // там это всё равно дало бы только низкую и непонятную ребёнку оценку.
+      setError('Похоже, пересказ распознан не на русском языке. Сервис понимает и проверяет только русскую речь.')
+      setPhase('intro'); return
+    }
     analyzeRetelling(text, t)
-      .then(r => { setAnalysis(r); setPhase('done') })
+      .then(r => {
+        if (r.blocked) {
+          if (r.blockType === 'injection') {
+            const newAttempts = injectionAttempts + 1
+            setInjectionAttempts(newAttempts)
+            // При injection не сбрасываем транскрипт сразу — даём ребёнку
+            // увидеть сообщение и попробовать записать по-другому.
+            // После 3 попыток — сбрасываем полностью (как лимит исчерпан).
+            setError(r.message)
+            setPhase('intro')
+            if (newAttempts >= 3) {
+              setTranscript('')
+              setInjectionAttempts(0)
+            }
+          } else {
+            setError(r.message)
+            setPhase('intro')
+          }
+          return
+        }
+        setInjectionAttempts(0)
+        setAnalysis(r); setPhase('done')
+      })
       .catch(e => { setError('Ошибка анализа: ' + e.message); setPhase('intro') })
   }, [phase])
 
@@ -324,7 +375,7 @@ async function handlePaywall() {
                     className="btn btn-green"
                     onClick={() => {
                       setShowPaywall(false)
-                      navigate('/result', { state: { text, meta, transcript, analysis } })
+                      navigate('/result', { state: { text, transcript, analysis } })
                     }}
                   >
                     Перейти к вопросам →
