@@ -49,6 +49,12 @@ export function createSpeechRecognizer({ onResult, onEnd, onError }) {
 
   return {
     start:  () => { finalTranscript = ''; recognizer.start() },
+    // resume() — возобновление после паузы: не сбрасывает накопленный
+    // finalTranscript, начинает дописывать к уже распознанному тексту.
+    resume: (existingTranscript = '') => {
+      finalTranscript = existingTranscript ? existingTranscript + ' ' : ''
+      recognizer.start()
+    },
     stop:   () => recognizer.stop(),
     abort:  () => recognizer.abort(),
     reset:  () => { finalTranscript = '' },
