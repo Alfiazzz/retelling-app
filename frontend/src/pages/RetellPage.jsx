@@ -85,6 +85,10 @@ export default function RetellPage() {
       if (!rec) return
       recRef.current = rec
       rec.start()
+      // Запускаем таймер тишины сразу при старте — иначе вопрос "Ты ещё здесь?"
+      // не прозвучит если ребёнок молчит с самого начала записи (onResult не
+      // вызывается пока нет речи, значит таймер без этой строки никогда не стартует)
+      silenceRef.current = setTimeout(() => speak('Ты ещё здесь? Продолжай пересказ.'), SILENCE_MS)
       setPhase('recording')
     }
 
@@ -105,6 +109,9 @@ export default function RetellPage() {
       if (!rec) return
       recRef.current = rec
       rec.resume(transcript)
+      // Та же логика что и в startRecording — таймер стартует сразу,
+      // чтобы ловить тишину с момента возобновления, а не с первого слова
+      silenceRef.current = setTimeout(() => speak('Ты ещё здесь? Продолжай пересказ.'), SILENCE_MS)
       setPhase('recording')
     }
 
