@@ -116,8 +116,16 @@ export default function RetellPage() {
     }
 
   function stopRecording() {
-      recRef.current?.stop(); clearTimeout(silenceRef.current); setPhase('analyzing')
+    recRef.current?.stop(); clearTimeout(silenceRef.current)
+    // Если слов меньше 20 — показываем уточняющий вопрос перед анализом
+    const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length
+    if (wordCount > 0 && wordCount < 20) {
+      speak('Ты сказал совсем немного. Хочешь добавить что-нибудь ещё?')
+      setPhase('confirming')
+    } else {
+      setPhase('analyzing')
     }
+  }
 
   function resetRecording() {
       recRef.current?.abort(); clearTimeout(silenceRef.current); clearInterval(timerRef.current)
@@ -258,6 +266,26 @@ export default function RetellPage() {
             <span className="analyzing-spinner">⚙️</span>
             <p className="analyzing-title">Анализирую пересказ...</p>
             <p className="analyzing-hint">Обычно 5–10 секунд</p>
+          </div>
+        )}
+
+        {phase === 'confirming' && (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🤔</div>
+            <p style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
+              Ты сказал совсем немного.
+            </p>
+            <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 20 }}>
+              Хочешь добавить что-нибудь ещё?
+            </p>
+            <div className="btn-row" style={{ justifyContent: 'center' }}>
+              <button className="btn btn-secondary btn-sm" onClick={resumeRecording}>
+                🎤 Да, расскажу ещё
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={() => setPhase('analyzing')}>
+                Нет, проверить →
+              </button>
+            </div>
           </div>
         )}
 
