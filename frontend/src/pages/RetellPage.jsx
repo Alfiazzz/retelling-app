@@ -135,8 +135,8 @@ export default function RetellPage() {
   useEffect(() => {
       if (phase !== 'analyzing') return
       const t = transcript.trim()
-      if (!t || t.split(/\s+/).length < 5) {
-        setError('Пересказ слишком короткий. Попробуй ещё раз.')
+      if (!t) {
+        setError('Пересказ пустой. Попробуй ещё раз.')
         setPhase('intro'); return
       }
       if (!checkLooksRussian(t).looksRussian) {
