@@ -1,104 +1,140 @@
-# Сервис проверки пересказа текста
+# Пересказка.ai — сервис проверки пересказа текста
 
-Веб-приложение для проверки навыка пересказа у детей школьного возраста.
+Веб-приложение для проверки навыка пересказа у детей 4–16 лет. Ребёнок фотографирует страницу книги, пересказывает текст голосом, получает оценку от AI и отвечает на вопросы по тексту. Результат отправляется на e-mail родителю или учителю.
 
 ## Стек
 
-- **Frontend**: React 18 + Vite + Tailwind CSS → деплой на Vercel (бесплатно)
-- **Backend**: Node.js + Express → деплой на Render (бесплатно)
-- **OCR**: Tesseract.js (бесплатно, без API)
-- **STT**: Web Speech API (встроен в браузер, бесплатно)
-- **AI-анализ**: Groq API или Google Gemini API (бесплатный tier)
-- **TTS**: Web Speech API SpeechSynthesis (бесплатно)
-- **Email**: Resend (бесплатно до 3000 писем/месяц)
+**Frontend**
+- React 18 + Vite
+- React Router v6 (4 страницы: Текст → Пересказ → Вопросы → Отчёт)
+- Tesseract.js — OCR прямо в браузере, без серверных запросов
+- Web Speech API — распознавание речи и синтез (встроен в браузер)
+- Яндекс.Метрика — аналитика
+
+**Backend**
+- Node.js + Express
+- GigaChat API (Сбер) — анализ пересказа и проверка ответов
+- RuSender — отправка email-отчётов
+- express-rate-limit — защита от флуда
+
+**Деплой**
+- Frontend → shared-хостинг (статика после `npm run build`)
+- Backend → Render.com
 
 ## Структура проекта
 
 ```
 retelling-app/
-├── frontend/          # React-приложение
-│   ├── src/
-│   │   ├── components/    # UI-компоненты
-│   │   ├── pages/         # Страницы приложения
-│   │   ├── services/      # Сервисный слой (OCR, AI, Email)
-│   │   ├── config/        # Конфиги, тарифы, контекст
-│   │   ├── hooks/         # Кастомные хуки
-│   │   └── styles/        # Глобальные стили
-│   └── package.json
-└── backend/           # Express API
-    ├── src/
-    │   ├── routes/        # API маршруты
-    │   ├── services/      # Бизнес-логика
-    │   └── middleware/    # Middleware
-    └── package.json
+├── frontend/
+│   └── src/
+│       ├── pages/
+│       │   ├── UploadPage.jsx      # Загрузка фото + OCR
+│       │   ├── RetellPage.jsx      # Запись пересказа голосом
+│       │   ├── ResultPage.jsx      # Ответы на вопросы
+│       │   └── ReportPage.jsx      # Отчёт + отправка на email
+│       ├── components/
+│       │   ├── Header.jsx          # Шапка с прогресс-баром (4 шага)
+│       │   ├── VoiceInput.jsx      # Поле ввода с кнопкой микрофона
+│       │   └── ProgressBar.jsx     # Индикатор прогресса OCR
+│       └── services/
+│           ├── aiService.js        # Запросы к бэкенду (анализ, вопросы)
+│           ├── ocrService.js       # Tesseract.js OCR
+│           ├── speechService.js    # Web Speech API
+│           ├── emailService.js     # Отправка отчёта
+│           └── languageCheckService.js  # Определение языка текста
+├── backend/
+│   └── src/
+│       ├── routes/
+│       │   ├── ai.js              # /api/ai/* — анализ и модерация
+│       │   ├── report.js          # /api/report/send — отправка отчёта
+│       │   ├── notify.js          # /api/notify/payment — уведомление владельца
+│       │   └── auth.js            # /api/auth/* — заглушка авторизации
+│       └── services/
+│           ├── aiService.js       # Интеграция с GigaChat
+│           ├── emailService.js    # Интеграция с RuSender
+│           └── moderationService.js  # Словарная модерация контента
+└── README.md
 ```
 
-## Быстрый старт
+## Переменные окружения
 
-### 1. Получи API-ключи (все бесплатно)
+### Backend (`backend/.env`)
 
-- **Groq API**: https://console.groq.com → Sign up → API Keys → Create
-- **Resend**: https://resend.com → Sign up → API Keys → Create
-- *(опционально)* **Gemini API**: https://aistudio.google.com → Get API key
-
-### 2. Настрой переменные окружения
-
-```bash
-# frontend/.env
-VITE_API_URL=http://localhost:3001
-VITE_AI_PROVIDER=groq   # или gemini
-```
-
-```bash
-# backend/.env
+```env
 PORT=3001
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxx
-GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxx
-RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
-AI_PROVIDER=groq
-FRONTEND_URL=http://localhost:5173
+
+# GigaChat API (Сбер) — анализ пересказа и проверка ответов
+# https://developers.sber.ru/portal/products/gigachat
+GIGACHAT_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# RuSender — отправка email-отчётов родителям/учителям
+# https://rusender.ru
+RUSENDER_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Адрес фронтенда (для CORS)
+FRONTEND_URL=https://твой-домен.ru
 ```
 
-### 3. Установи зависимости и запусти
+### Frontend (`frontend/.env.production`)
+
+```env
+VITE_API_URL=https://твой-бэкенд.onrender.com
+```
+
+## Быстрый старт (локальная разработка)
 
 ```bash
 # Backend
 cd backend
 npm install
-npm run dev
+cp .env.example .env   # заполни GIGACHAT_KEY и RUSENDER_API_KEY
+npm run dev            # запускается на http://localhost:3001
 
 # Frontend (в новом терминале)
 cd frontend
 npm install
-npm run dev
+npm run dev            # запускается на http://localhost:5173
 ```
-
-Открой http://localhost:5173
 
 ## Деплой
 
-### Frontend → Vercel
-1. Залей проект на GitHub
-2. Зайди на vercel.com → New Project → выбери репозиторий
-3. Root Directory: `frontend`
-4. Добавь переменные окружения (VITE_API_URL = адрес твоего Render-бэкенда)
-5. Deploy
+### Frontend → shared-хостинг
 
-### Backend → Render
-1. На render.com → New → Web Service → подключи GitHub
+```bash
+cd frontend
+npm run build
+# Содержимое папки dist/ загрузи в public_html через cPanel/FTP
+```
+
+Добавь файл `.htaccess` в `public_html` для корректной работы React Router:
+
+```apache
+Options -MultiViews
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.html [QSA,L]
+```
+
+### Backend → Render.com
+
+1. Render.com → New → Web Service → подключи GitHub репозиторий
 2. Root Directory: `backend`
 3. Build Command: `npm install`
 4. Start Command: `npm start`
-5. Добавь все переменные окружения из backend/.env
-6. Deploy
+5. Добавь переменные окружения: `GIGACHAT_KEY`, `RUSENDER_API_KEY`, `FRONTEND_URL`
 
-## Расширение (регистрация и тарифы)
+## Безопасность
 
-Архитектура уже подготовлена:
-- `frontend/src/config/userContext.js` — контекст пользователя (сейчас guest)
-- `frontend/src/config/planConfig.js` — лимиты тарифов (сейчас всё разрешено)
-- `backend/src/middleware/auth.js` — заглушка для JWT-авторизации
-- `backend/src/routes/auth.js` — заготовка маршрутов авторизации
+- Двухуровневая модерация контента: словарный фильтр (мат, суицид, насилие, наркотики, сексуальный контент, prompt injection) + проверка в промпте GigaChat
+- Защита от XSS в HTML-письмах (экранирование пользовательских данных)
+- Валидация типов и длины входных данных на бэкенде
+- Rate limiting: 30 запросов/мин на `/api`, 5 запросов/час на `/api/notify/payment`
+- Сырые ответы сторонних API не передаются клиенту
 
-Когда будешь добавлять авторизацию — подключи PocketBase или Supabase Pro
-и заполни эти файлы без изменения остальной архитектуры.
+## Архитектурные решения
+
+- **Автор и название произведения** извлекаются GigaChat из текста автоматически — пользователь ничего не вводит вручную
+- **OCR работает в браузере** (Tesseract.js) — фотографии не передаются на сервер
+- **Голосовой ввод** доступен как для пересказа, так и для ответов на вопросы (тап-старт / тап-стоп)
+- **Определение языка** — эвристика по доле кириллицы, предупреждает если текст или пересказ не на русском
+- **Модерация OCR-текста** — проверяется до перехода к пересказу; injection в тексте книги не блокируется
