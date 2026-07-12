@@ -4,6 +4,14 @@ import { checkLooksRussian } from './languageCheckService.js'
 // OCR-сервис на базе Tesseract.js.
 // Работает полностью в браузере — без серверных запросов.
 
+// Минимальная уверенность Tesseract для слова чтобы считать его реальным
+// текстом, а не мусором с картинки. Слова с confidence ниже этого порога
+// (обычно это символы с иллюстраций, декоративных элементов, теней и т.п.)
+// исключаются из итогового текста перед отправкой в GigaChat.
+// Порог 40 подобран эмпирически: нормальный текст книги обычно 70-99,
+// мусор с картинок обычно 0-30. Порог 40 даёт запас в обе стороны.
+const WORD_CONFIDENCE_THRESHOLD = 40
+
 export async function recognizeText(imageFile, onProgress) {
   const result = await Tesseract.recognize(imageFile, 'rus', {
     logger: (m) => {
@@ -12,9 +20,64 @@ export async function recognizeText(imageFile, onProgress) {
       }
     },
   })
+
+  // Вариант В: фильтрация мусора с картинок в два шага.
+  //
+  // Шаг 1 — фильтрация по confidence отдельных слов.
+  // Tesseract возвращает confidence для каждого слова — это его собственная
+  // оценка насколько уверенно он распознал символы. Слова с низким confidence
+  // (< WORD_CONFIDENCE_THRESHOLD) — это чаще всего мусор с иллюстраций,
+  // а не реальный текст. Фильтруем их и собираем чистый текст из оставшихся.
+  //
+  // Шаг 2 — удаление пустых строк.
+  // После удаления мусорных слов некоторые строки становятся пустыми
+  // (строка состояла только из мусора — например, строка с картинкой).
+  // Убираем такие строки чтобы не засорять текст лишними пробелами.
+
+  const words = result.data.words ?? []
+
+  if (words.length === 0) {
+    // Если Tesseract не вернул слова — используем сырой текст как раньше
+    return {
+      text:       result.data.text.trim(),
+      confidence: result.data.confidence,
+    }
+  }
+
+  // Шаг 1: оставляем только слова с достаточной уверенностью
+  const cleanWords = words.filter(w => w.confidence >= WORD_CONFIDENCE_THRESHOLD)
+
+  // Восстанавливаем текст построчно, сохраняя структуру абзацев.
+  // Каждое слово от Tesseract знает свою позицию (bbox), по ней определяем
+  // переносы строк: если следующее слово стоит значительно ниже предыдущего
+  // — это новая строка.
+  let cleanText = ''
+  let prevBottom = null
+  for (const word of cleanWords) {
+    const top = word.bbox?.y0 ?? 0
+    const bottom = word.bbox?.y1 ?? 0
+    const height = bottom - top
+
+    if (prevBottom !== null && top > prevBottom + height * 0.5) {
+      // Новая строка — добавляем перенос
+      cleanText += '\n'
+    } else if (cleanText.length > 0) {
+      cleanText += ' '
+    }
+    cleanText += word.text
+    prevBottom = bottom
+  }
+
+  // Шаг 2: убираем пустые строки (остались от строк с картинками)
+  const filteredText = cleanText
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .join('\n')
+
   return {
-    text:       result.data.text.trim(),
-    confidence: result.data.confidence,  // 0–100
+    text:       filteredText,
+    confidence: result.data.confidence,
   }
 }
 
