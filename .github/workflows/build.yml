@@ -3,7 +3,7 @@ name: Build Frontend
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Эта строчка добавит кнопку "Запустить вручную"
+  workflow_dispatch:
 
 jobs:
   build:
@@ -17,6 +17,9 @@ jobs:
           node-version: 20
           
       - name: Install and Build
+        env:
+          # ⚠️ ВАЖНО: Замени ссылку ниже на адрес своего бэкенда с Render.com!
+          VITE_API_URL: https://retelling-app-backend.onrender.com
         run: cd frontend && npm install && npm run build
         
       - name: Upload Artifact
