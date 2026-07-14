@@ -44,27 +44,56 @@ export async function recognizeText(imageFile, onProgress) {
     }
   }
 
-  // Шаг 1: оставляем только слова с достаточной уверенностью
-  const cleanWords = words.filter(w => w.confidence >= WORD_CONFIDENCE_THRESHOLD)
+  // Шаг 1: оставляем только слова с достаточной уверенностью.
+  // Исключение — буквица (drop cap): крупная декоративная первая буква абзаца.
+  // Tesseract распознаёт её как отдельный символ с низким confidence из-за
+  // нестандартного шрифта и размера, хотя это реальная буква текста.
+  // Признаки буквицы: одна заглавная буква, а следующее слово начинается
+  // со строчной (продолжение того же слова: "Ж" + "ил-был" = "Жил-был").
+  function isDropCap(word, nextWord) {
+    if (!word || !nextWord) return false
+    const isOneLetter = word.text.length === 1
+    const isUpperCase = word.text === word.text.toUpperCase() && /[А-ЯЁA-Z]/.test(word.text)
+    const nextStartsLower = nextWord.text.length > 0 &&
+      nextWord.text[0] === nextWord.text[0].toLowerCase()
+    return isOneLetter && isUpperCase && nextStartsLower
+  }
+
+  const cleanWords = words.filter((w, i) => {
+    if (w.confidence >= WORD_CONFIDENCE_THRESHOLD) return true
+    // Низкий confidence — проверяем не буквица ли это
+    return isDropCap(w, words[i + 1])
+  })
 
   // Восстанавливаем текст построчно, сохраняя структуру абзацев.
+  // Буквицу склеиваем с остатком слова без пробела.
   // Каждое слово от Tesseract знает свою позицию (bbox), по ней определяем
   // переносы строк: если следующее слово стоит значительно ниже предыдущего
   // — это новая строка.
   let cleanText = ''
   let prevBottom = null
-  for (const word of cleanWords) {
+  for (let i = 0; i < cleanWords.length; i++) {
+    const word = cleanWords[i]
+    const prevWord = cleanWords[i - 1]
     const top = word.bbox?.y0 ?? 0
     const bottom = word.bbox?.y1 ?? 0
     const height = bottom - top
 
-    if (prevBottom !== null && top > prevBottom + height * 0.5) {
-      // Новая строка — добавляем перенос
-      cleanText += '\n'
+    // Если предыдущее слово было буквицей — склеиваем без пробела
+    const prevWasDropCap = prevWord &&
+      prevWord.text.length === 1 &&
+      /[А-ЯЁA-Z]/.test(prevWord.text) &&
+      prevWord.confidence < WORD_CONFIDENCE_THRESHOLD
+
+    if (prevWasDropCap) {
+      cleanText += word.text
+    } else if (prevBottom !== null && top > prevBottom + height * 0.5) {
+      cleanText += '\n' + word.text
     } else if (cleanText.length > 0) {
-      cleanText += ' '
+      cleanText += ' ' + word.text
+    } else {
+      cleanText += word.text
     }
-    cleanText += word.text
     prevBottom = bottom
   }
 
