@@ -33,37 +33,52 @@ export default function UploadPage() {
       return
     }
 
-    // Отсекаем слишком большие файлы по отдельности — это даёт понятную
-    // обратную связь (какие именно файлы не подошли), а не просто блокирует
-    // всю загрузку целиком из-за одного большого фото.
     const tooLarge = byType.filter(f => f.size > MAX_FILE_SIZE)
     const byTypeAndSize = byType.filter(f => f.size <= MAX_FILE_SIZE)
 
-    // Лимит количества — берём первые MAX_FILES, остальное игнорируем
-    // с предупреждением (как и описано для случая превышения лимита страниц).
-    const limited = byTypeAndSize.slice(0, MAX_FILES)
-    const droppedByLimit = byTypeAndSize.length - limited.length
+    // Дописываем к уже добавленным файлам, а не заменяем их.
+    // Дубликаты исключаем по имени + размеру — если ребёнок случайно выбрал
+    // то же фото второй раз, оно не добавится дважды.
+    setFiles(prev => {
+      const existingKeys = new Set(prev.map(f => `${f.name}:${f.size}`))
+      const newUnique = byTypeAndSize.filter(f => !existingKeys.has(`${f.name}:${f.size}`))
+      const combined = [...prev, ...newUnique]
+      const limited = combined.slice(0, MAX_FILES)
+      const droppedByLimit = combined.length - limited.length
 
-    if (!limited.length) {
-      setError(tooLarge.length
-        ? `Файл слишком большой (максимум ${MAX_FILE_MB} МБ).`
-        : 'Поддерживаются форматы: JPG, PNG')
-      return
-    }
+      const warnings = []
+      if (tooLarge.length) warnings.push(`Пропущено файлов слишком большого размера (>${MAX_FILE_MB} МБ): ${tooLarge.length}`)
+      if (droppedByLimit > 0) warnings.push(`Максимум ${MAX_FILES} файлов, остальные не учтены`)
+      if (warnings.length) setError(warnings.join('. '))
+      else setError('')
 
-    const warnings = []
-    if (tooLarge.length) warnings.push(`Пропущено файлов слишком большого размера (>${MAX_FILE_MB} МБ): ${tooLarge.length}`)
-    if (droppedByLimit > 0) warnings.push(`Загружено максимум ${MAX_FILES} файлов, остальные (${droppedByLimit}) не учтены`)
+      // Генерируем превью только для новых файлов и дописываем к старым
+      const newFilesForPreview = limited.slice(prev.length)
+      if (newFilesForPreview.length > 0) {
+        const readers = newFilesForPreview.map(f => new Promise(res => {
+          const r = new FileReader()
+          r.onload = e => res(e.target.result)
+          r.readAsDataURL(f)
+        }))
+        Promise.all(readers).then(newPreviews => {
+          setPreviews(p => [...p, ...newPreviews])
+        })
+      }
 
-    setFiles(limited)
+      setOcr(null)
+      return limited
+    })
+
+    // Сбрасываем input чтобы можно было выбрать тот же файл снова
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  // Удаление конкретного фото по индексу
+  function removeFile(index) {
+    setFiles(prev => prev.filter((_, i) => i !== index))
+    setPreviews(prev => prev.filter((_, i) => i !== index))
     setOcr(null)
-    setError(warnings.join('. '))
-    const readers = limited.map(f => new Promise(res => {
-      const r = new FileReader()
-      r.onload = e => res(e.target.result)
-      r.readAsDataURL(f)
-    }))
-    Promise.all(readers).then(setPreviews)
+    setError('')
   }
 
   function handleDrop(e) {
@@ -153,14 +168,19 @@ export default function UploadPage() {
             <>
               <div className="photo-row" style={{ justifyContent: 'center', marginBottom: 10 }}>
                 {previews.map((src, i) => (
-                  <div key={i} className="photo-thumb">
+                  <div key={i} className="photo-thumb" style={{ position: 'relative' }}>
                     <img src={src} alt={`стр ${i+1}`}
                       style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
                     <span className="photo-badge">с.{i+1}</span>
+                    <button
+                      className="photo-remove-btn"
+                      onClick={e => { e.stopPropagation(); removeFile(i) }}
+                      aria-label={`Удалить страницу ${i+1}`}
+                    >✕</button>
                   </div>
                 ))}
               </div>
-              <span className="uz-hint">{files.length} стр. · нажми чтобы изменить</span>
+              <span className="uz-hint">{files.length} стр.</span>
             </>
           )}
         </div>
@@ -182,6 +202,17 @@ export default function UploadPage() {
           </p>
           <ProgressBar value={progress} label="Прогресс" />
         </div>
+      )}
+
+      {/* Кнопка добавить ещё страницу */}
+      {files.length > 0 && !ocr && !loading && files.length < MAX_FILES && (
+        <button
+          className="btn btn-secondary btn-sm"
+          style={{ marginTop: -4 }}
+          onClick={() => fileRef.current?.click()}
+        >
+          + Добавить ещё страницу
+        </button>
       )}
 
       {/* Кнопка OCR */}
